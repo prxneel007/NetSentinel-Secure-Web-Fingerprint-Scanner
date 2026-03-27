@@ -188,49 +188,7 @@ Scan completed in 4.87 seconds.
 ==================================================
 ```
 
----
 
-## Port Reference
-
-The scanner checks 80+ ports across all major service categories.
-
-**Web & Proxy**
-
-| Port | Service       | Port | Service    |
-|------|---------------|------|------------|
-| 80   | HTTP          | 8080 | HTTP-Proxy |
-| 443  | HTTPS         | 8443 | HTTPS-Alt  |
-| 8000 | HTTP-Alt      | 8888 | Jupyter    |
-
-**Databases**
-
-| Port  | Service    | Port  | Service    |
-|-------|------------|-------|------------|
-| 3306  | MySQL      | 5432  | PostgreSQL |
-| 27017 | MongoDB    | 6379  | Redis      |
-| 1433  | MSSQL      | 9042  | Cassandra  |
-| 1521  | Oracle DB  | 11211 | Memcached  |
-
-**Remote Access & VPN**
-
-| Port | Service  | Port | Service  |
-|------|----------|------|----------|
-| 22   | SSH      | 3389 | RDP      |
-| 23   | Telnet   | 5900 | VNC      |
-| 1194 | OpenVPN  | 1723 | PPTP     |
-
-**Infrastructure & DevOps**
-
-| Port  | Service           | Port  | Service       |
-|-------|-------------------|-------|---------------|
-| 2375  | Docker            | 6443  | Kubernetes API|
-| 9200  | Elasticsearch     | 9092  | Kafka         |
-| 2181  | Zookeeper         | 5601  | Kibana        |
-| 9090  | Prometheus        | 50070 | Hadoop HDFS   |
-
-See `scanner.py` for the full list.
-
----
 
 ## HTTP Server Detection
 
