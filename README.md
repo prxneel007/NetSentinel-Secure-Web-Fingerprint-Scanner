@@ -216,7 +216,6 @@ If the server header is absent or unrecognized, the type is reported as `Unknown
 
 ## Security Notes
 
-This project is designed for learning and lab environments. Before deploying in any real network:
 
 | Concern | Current Behavior | Recommended Action |
 |---|---|---|
@@ -241,4 +240,4 @@ Please open an issue before starting significant changes.
 
 ## License
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+
