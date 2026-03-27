@@ -238,6 +238,4 @@ Please open an issue before starting significant changes.
 
 ---
 
-## License
-
 
