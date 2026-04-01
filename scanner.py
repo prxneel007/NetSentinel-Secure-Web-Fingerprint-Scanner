@@ -86,7 +86,7 @@ SERVICES = {
 PORTS = list(SERVICES.keys())
 
 lock = threading.Lock()
-
+rtt_list = []
 
 # ──────────────────────────────────────────────
 #  Detect server type from banner / host
@@ -123,11 +123,16 @@ def scan_port(host, port, open_ports):
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(2)
+        start = time.time() 
         result = sock.connect_ex((host, port))
+        end = time.time()
+        rtt = (end - start) * 1000  # Convert to milliseconds
+        rtt_list.append(rtt)
+        
         if result == 0:
             service = SERVICES.get(port, "Unknown")
             with lock:
-                open_ports.append(f"Port {port:>5}  →  OPEN   ({service})")
+                open_ports.append(f"Port {port} → OPEN ({service}) | RTT: {rtt:.2f} ms")
         sock.close()
     except Exception:
         pass
@@ -180,6 +185,7 @@ def scan_server(host):
 
     output     = []
     open_ports = []          # local list — thread-safe via lock
+    start_time = time.time() 
 
     output.append(f"Target     : {host}")
     output.append(f"IP Address : {ip}")
@@ -195,7 +201,10 @@ def scan_server(host):
 
     for t in threads:
         t.join(timeout=5)        # safety timeout per thread
-
+    end_time = time.time()   # 🔹 ADDED
+    total_time = end_time - start_time
+    latency = sum(rtt_list)/len(rtt_list) if rtt_list else 0   # 🔹 ADDED
+    throughput = len(PORTS)/total_time if total_time > 0 else 0
     # Sort results by port number
     open_ports.sort(key=lambda x: int(x.split()[1]))
 
@@ -205,6 +214,8 @@ def scan_server(host):
         output.append("No open ports found.")
 
     output.append("-" * 45)
+    output.append(f"Average Latency : {latency:.2f} ms")   # 🔹 ADDED
+    output.append(f"Throughput      : {throughput:.2f} ports/sec")   # 🔹 ADDED
 
     # HTTP fingerprint
     status_code, banner = grab_http_banner(host)
