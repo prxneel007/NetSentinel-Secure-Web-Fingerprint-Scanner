@@ -11,16 +11,22 @@ PORT = 8000
 #  Simple user store  (extend as needed)
 # ──────────────────────────────────────────────
 USERS = {
-    "pesu": "pesu1234",
+    "pesu": "pesu1234",\
     "admin": "admin123",
 }
-
+client_count = 0   # 🔹 ADDED
+lock = threading.Lock()   # 🔹 ADDED
 
 # ──────────────────────────────────────────────
 #  Handle one client connection
 # ──────────────────────────────────────────────
 def handle_client(conn, addr):
-    print(f"[+] Client connected: {addr}")
+    
+    global client_count   # 🔹 ADDED
+
+    with lock:   # 🔹 ADDED
+        client_count += 1
+        print(f"[+] Client connected: {addr} | Total clients: {client_count}")
 
     try:
         # ── Authentication ──────────────────────
@@ -51,6 +57,7 @@ def handle_client(conn, addr):
         start = time.time()
 
         result  = scan_server(host)
+        result += f"\n\nActive Clients: {client_count}"   # 🔹 ADDED
         elapsed = time.time() - start
 
         result += f"\n\nScan completed in {elapsed:.2f} seconds."
@@ -75,6 +82,8 @@ def handle_client(conn, addr):
     finally:
         conn.close()
         print(f"[-] Client disconnected: {addr}")
+        with lock:   # 🔹 ADDED
+            client_count -= 1
 
 
 # ──────────────────────────────────────────────
