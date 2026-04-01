@@ -1,8 +1,8 @@
 # NetSentinel — Secure Web Fingerprint Scanner
 
-A TLS-encrypted, multi-threaded network port scanner with HTTP fingerprinting, built on a remote client-server architecture. Clients authenticate over a secure SSL connection and remotely trigger scans against any target host. Results include open ports, service names, HTTP status codes, and web server identification.
+A TLS-encrypted, multi-threaded network port scanner with HTTP fingerprinting, RTT measurement, and concurrent client support. Clients authenticate over a secure SSL connection and remotely trigger scans against any target host. Results include open ports, service names, per-port round-trip times, average latency, scan throughput, HTTP status, and web server identification.
 
-
+> **Disclaimer:** This tool is intended for authorized network analysis only. Always obtain explicit permission before scanning any host or network you do not own.
 
 ---
 
@@ -14,11 +14,11 @@ A TLS-encrypted, multi-threaded network port scanner with HTTP fingerprinting, b
 - [Requirements](#requirements)
 - [Setup](#setup)
 - [Usage](#usage)
+- [Sample Output](#sample-output)
 - [Port Reference](#port-reference)
 - [HTTP Server Detection](#http-server-detection)
 - [Security Notes](#security-notes)
-- [Contributing](#contributing)
-- [License](#license)
+
 
 ---
 
@@ -26,9 +26,11 @@ A TLS-encrypted, multi-threaded network port scanner with HTTP fingerprinting, b
 
 NetSentinel is built around three core modules:
 
-- **`server.py`** — Listens for incoming TLS connections, handles authentication, and dispatches scan jobs.
-- **`client.py`** — Connects to the server over TLS, authenticates, submits a target host, and displays the scan output.
-- **`scanner.py`** — Performs multi-threaded port scanning across 80+ well-known ports and grabs HTTP banners for server fingerprinting.
+- **`scanner.py`** — Scan engine. Performs multi-threaded TCP port scanning across 80+ ports, measures per-port RTT, calculates average latency and throughput, and performs HTTP banner grabbing for server fingerprinting.
+- **`server.py`** — TLS server. Accepts encrypted client connections, authenticates users, dispatches scan jobs, and tracks active client count in real time.
+- **`client.py`** — TLS client. Connects to the server over SSL, authenticates, submits a target host, and streams the full scan result.
+
+All modules use the Python standard library exclusively — no third-party packages are required.
 
 ---
 
@@ -38,21 +40,22 @@ NetSentinel is built around three core modules:
 CLIENT                                         SERVER
 ------                                         ------
 client.py
-  │
-  ├── TLS Handshake ─────────────────────────► server.py
-  │ ◄─────────────── Auth Prompt ─────────────────┤
-  ├── Credentials ──────────────────────────────► │
-  │ ◄─────────────── Auth OK ──────────────────── │
-  ├── Target Host ──────────────────────────────► │
-  │                                               ├── scanner.py
-  │                                               │     ├── Thread per port (80+ ports)
-  │                                               │     ├── TCP connect scan
-  │                                               │     ├── HTTP banner grab
-  │                                               │     └── Server fingerprint
-  │ ◄─────────────── Scan Results ────────────────┤
+  |
+  |-- TLS Handshake ------------------------------> server.py
+  |  <-------------- Auth Prompt ------------------|
+  |-- Credentials --------------------------------->|
+  |  <-------------- Auth OK ----------------------|
+  |-- Target Host --------------------------------->|
+  |                                                 |-- scanner.py
+  |                                                 |     |-- Thread per port (80+ ports)
+  |                                                 |     |-- TCP connect + RTT measurement
+  |                                                 |     |-- Latency + throughput calculation
+  |                                                 |     |-- HTTP banner grab (port 80)
+  |                                                 |     |-- Server fingerprint detection
+  |  <-------------- Scan Results + Active Clients -|
 ```
 
-All traffic between client and server is encrypted via TLS. The server performs the scan and streams results back to the client.
+All client-server traffic is encrypted via TLS. The server executes the scan and streams results back once complete.
 
 ---
 
@@ -60,9 +63,9 @@ All traffic between client and server is encrypted via TLS. The server performs 
 
 ```
 netsentinel/
-├── server.py          # TLS server — authentication and scan dispatch
-├── client.py          # TLS client — connection, auth, and result display
-├── scanner.py         # Scan engine — port scanning and HTTP fingerprinting
+├── server.py          # TLS server — auth, client tracking, scan dispatch
+├── client.py          # TLS client — connection, auth, result display
+├── scanner.py         # Scan engine — port scanning, RTT, fingerprinting
 ├── cert.pem           # Server TLS certificate
 ├── key.pem            # Server private key
 ├── ca.pem             # Certificate Authority certificate
@@ -79,7 +82,9 @@ netsentinel/
 
 - Python 3.7 or higher
 - OpenSSL (for certificate generation)
-- No third-party packages — uses Python standard library only (`socket`, `ssl`, `threading`)
+- No third-party packages — uses Python standard library only
+
+Modules used: `socket`, `ssl`, `threading`, `time`
 
 ---
 
@@ -114,10 +119,10 @@ openssl x509 -req -days 365 -in client.csr -CA ca.pem -CAkey ca.key -CAcreateser
 
 ### 3. Configure the Server
 
-Edit `server.py` to set the bind address and user credentials:
+Edit `server.py` to set the bind address and credentials:
 
 ```python
-HOST = "127.0.0.1"   # Use 0.0.0.0 to accept connections on all interfaces
+HOST = "127.0.0.1"   # Use 0.0.0.0 to accept on all interfaces
 PORT = 8000
 
 USERS = {
@@ -128,7 +133,7 @@ USERS = {
 
 ### 4. Configure the Client
 
-Edit `client.py` to point to your server's IP address:
+Edit `client.py` to point to your server:
 
 ```python
 HOST = "192.168.1.100"   # Replace with your server's IP
@@ -156,8 +161,6 @@ python server.py
 python client.py
 ```
 
-The client will prompt for credentials and a target host:
-
 ```
 Username: alice
 Password:
@@ -167,7 +170,9 @@ Enter website/IP to scan: scanme.nmap.org
 Scanning ... please wait.
 ```
 
-### Sample Output
+---
+
+## Sample Output
 
 ```
 ==================================================
@@ -177,65 +182,84 @@ Target     : scanme.nmap.org
 IP Address : 45.33.32.156
 Scan Time  : 2025-06-01 14:32:10
 ---------------------------------------------
-Port    22  ->  OPEN   (SSH)
-Port    80  ->  OPEN   (HTTP)
+Port 22 -> OPEN (SSH) | RTT: 183.42 ms
+Port 80 -> OPEN (HTTP) | RTT: 181.67 ms
 ---------------------------------------------
+Average Latency : 3.84 ms
+Throughput      : 14.22 ports/sec
 HTTP Status  : 200
 Server Banner: Apache/2.4.7
 Server Type  : Apache
 
-Scan completed in 4.87 seconds.
+Active Clients: 1
+
+Scan completed in 5.62 seconds.
 ==================================================
 ```
 
+---
 
+## Port Reference
+
+The scanner checks 80+ ports across all major service categories.
+
+**Web & Proxy**
+
+| Port  | Service    | Port  | Service    |
+|-------|------------|-------|------------|
+| 80    | HTTP       | 8080  | HTTP-Proxy |
+| 443   | HTTPS      | 8443  | HTTPS-Alt  |
+| 8000  | HTTP-Alt   | 8888  | Jupyter    |
+
+**Databases**
+
+| Port  | Service    | Port  | Service    |
+|-------|------------|-------|------------|
+| 3306  | MySQL      | 5432  | PostgreSQL |
+| 27017 | MongoDB    | 6379  | Redis      |
+| 1433  | MSSQL      | 9042  | Cassandra  |
+| 1521  | Oracle DB  | 11211 | Memcached  |
+
+**Remote Access & VPN**
+
+| Port  | Service  | Port  | Service  |
+|-------|----------|-------|----------|
+| 22    | SSH      | 3389  | RDP      |
+| 23    | Telnet   | 5900  | VNC      |
+| 1194  | OpenVPN  | 1723  | PPTP     |
+
+**Infrastructure & DevOps**
+
+| Port  | Service            | Port  | Service        |
+|-------|--------------------|-------|----------------|
+| 2375  | Docker             | 6443  | Kubernetes API |
+| 9200  | Elasticsearch      | 9092  | Kafka          |
+| 2181  | Zookeeper          | 5601  | Kibana         |
+| 9090  | Prometheus         | 50070 | Hadoop HDFS    |
+
+See `scanner.py` for the complete port list.
+
+---
 
 ## HTTP Server Detection
 
-The scanner sends a `HEAD /` HTTP request to port 80 and inspects the `Server` response header. The following servers are currently detected:
+The scanner sends a `HEAD /` request to port 80 and inspects the `Server` response header. Detected servers:
 
-- Nginx
-- Apache
-- Microsoft IIS
-- Cloudflare
-- Google Web Server (GWS)
-- Lighttpd
-- Caddy
-- OpenResty
-- Gunicorn
-- Tornado
-- Jetty
-- Apache Tomcat
-- Werkzeug / Flask
-- Express.js
-- FastAPI
+Nginx, Apache, Microsoft IIS, Cloudflare, Google Web Server, Lighttpd, Caddy, OpenResty, Gunicorn, Tornado, Jetty, Apache Tomcat, Werkzeug/Flask, Express.js, FastAPI, Amazon/AWS, Microsoft (hostname-based)
 
-If the server header is absent or unrecognized, the type is reported as `Unknown`.
+If the header is absent or unrecognized, the type is reported as `Unknown`.
 
 ---
 
 ## Security Notes
 
-
-| Concern | Current Behavior | Recommended Action |
+| Concern | Current Behavior | Recommended for Production |
 |---|---|---|
-| Certificate verification | Disabled on client (`CERT_NONE`) | Enable and supply a trusted CA cert |
-| Credential storage | Plaintext dictionary in `server.py` | Use hashed passwords (`bcrypt`) stored in env variables or a secrets manager |
-| Access control | Single-factor username/password | Add IP allowlisting, rate limiting, or multi-factor authentication |
-| Logging | Printed to stdout only | Implement structured logging with an audit trail |
+| Certificate verification | Disabled on client (`CERT_NONE`) | Enable with trusted CA cert and `CERT_REQUIRED` |
+| Credential storage | Plaintext dictionary in `server.py` | Hashed passwords (`bcrypt`) via environment variables |
+| Access control | Single-factor username/password | Add IP allowlisting, rate limiting, or MFA |
+| rtt_list thread safety | Relies on CPython GIL for list.append() | Add explicit lock for portability |
+| Logging | stdout only | Structured logging with audit trail |
 
 ---
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/your-feature`
-3. Commit your changes: `git commit -m "Add your feature"`
-4. Push to the branch: `git push origin feature/your-feature`
-5. Open a Pull Request
-
-Please open an issue before starting significant changes.
-
----
-
 
